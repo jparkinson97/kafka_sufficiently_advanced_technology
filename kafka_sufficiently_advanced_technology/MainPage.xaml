@@ -1,0 +1,387 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage
+    x:Name="PageRoot"
+    x:Class="kafka_sufficiently_advanced_technology.MainPage"
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:conv="clr-namespace:kafka_sufficiently_advanced_technology.Converters"
+    xmlns:sel="clr-namespace:kafka_sufficiently_advanced_technology.Selectors"
+    xmlns:vm="clr-namespace:kafka_sufficiently_advanced_technology.ViewModels"
+    xmlns:models="clr-namespace:kafka_sufficiently_advanced_technology.Models"
+    Title="{Binding Title}">
+
+    <ContentPage.Resources>
+        <ResourceDictionary>
+
+            <!-- Converters -->
+            <conv:InverseBoolConverter x:Key="InverseBool" />
+
+            <!-- True → selection blue, False → transparent (topic highlight) -->
+            <conv:BoolToColorConverter
+                x:Key="TopicBgColor"
+                TrueColor="#1E5799"
+                FalseColor="Transparent" />
+
+
+            <!-- True → red (error), False → green (success) for status label -->
+            <conv:BoolToColorConverter
+                x:Key="StatusColor"
+                TrueColor="#E53935"
+                FalseColor="#43A047" />
+
+            <!-- ── Broker row template ──────────────────────────────────── -->
+            <DataTemplate x:Key="BrokerTemplate" x:DataType="vm:BrokerItemViewModel">
+                <Grid
+                    Padding="10,9"
+                    BackgroundColor="{AppThemeBinding Light=#EAEAEA, Dark=#1C1C2A}"
+                    ColumnSpacing="6">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="16" />
+                        <ColumnDefinition Width="*"  />
+                        <ColumnDefinition Width="22" />
+                    </Grid.ColumnDefinitions>
+
+                    <!-- Expand arrow -->
+                    <Label
+                        Grid.Column="0"
+                        Text="{Binding ExpandIcon}"
+                        FontSize="11"
+                        VerticalOptions="Center"
+                        TextColor="{AppThemeBinding Light=#555, Dark=#AAA}" />
+
+                    <!-- Broker name -->
+                    <Label
+                        Grid.Column="1"
+                        Text="{Binding Name}"
+                        FontAttributes="Bold"
+                        FontSize="14"
+                        VerticalOptions="Center" />
+
+                    <!-- Loading spinner while fetching topics -->
+                    <ActivityIndicator
+                        Grid.Column="2"
+                        IsRunning="{Binding IsLoadingTopics}"
+                        IsVisible="{Binding IsLoadingTopics}"
+                        HeightRequest="18"
+                        WidthRequest="18"
+                        VerticalOptions="Center" />
+
+                    <Grid.GestureRecognizers>
+                        <TapGestureRecognizer
+                            Command="{Binding Source={x:Reference PageRoot}, Path=BindingContext.ToggleBrokerCommand}"
+                            CommandParameter="{Binding .}" />
+                    </Grid.GestureRecognizers>
+                </Grid>
+            </DataTemplate>
+
+            <!-- ── Topic row template ──────────────────────────────────── -->
+            <DataTemplate x:Key="TopicTemplate" x:DataType="vm:TopicItemViewModel">
+                <Grid
+                    Padding="32,7,10,7"
+                    BackgroundColor="{Binding IsSelected, Converter={StaticResource TopicBgColor}}">
+                    <Label
+                        Text="{Binding Name}"
+                        FontSize="13"
+                        VerticalOptions="Center">
+                        <Label.Triggers>
+                            <DataTrigger TargetType="Label" Binding="{Binding IsSelected}" Value="True">
+                                <Setter Property="TextColor" Value="White" />
+                            </DataTrigger>
+                        </Label.Triggers>
+                    </Label>
+                    <Grid.GestureRecognizers>
+                        <TapGestureRecognizer
+                            Command="{Binding Source={x:Reference PageRoot}, Path=BindingContext.SelectTopicCommand}"
+                            CommandParameter="{Binding .}" />
+                    </Grid.GestureRecognizers>
+                </Grid>
+            </DataTemplate>
+
+            <!-- ── DataTemplateSelector ────────────────────────────────── -->
+            <sel:BrowserDataTemplateSelector
+                x:Key="BrowserSelector"
+                BrokerTemplate="{StaticResource BrokerTemplate}"
+                TopicTemplate="{StaticResource TopicTemplate}" />
+
+        </ResourceDictionary>
+    </ContentPage.Resources>
+
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <!--  Root layout: left browser | divider | right options panel         -->
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <Grid>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="290" />
+            <ColumnDefinition Width="1"   />
+            <ColumnDefinition Width="*"   />
+        </Grid.ColumnDefinitions>
+
+        <!-- ══════════════════════════════════════════════════════════════ -->
+        <!--  LEFT PANEL – broker / topic browser                          -->
+        <!-- ══════════════════════════════════════════════════════════════ -->
+        <Grid Grid.Column="0" RowSpacing="0"
+              BackgroundColor="{AppThemeBinding Light=#F0F0F0, Dark=#1C1C2A}">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*"    />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+
+            <!-- Topic search -->
+            <SearchBar
+                Grid.Row="0"
+                Placeholder="Search topics…"
+                Text="{Binding SearchText}" />
+
+            <!-- Flat broker/topic tree -->
+            <CollectionView
+                Grid.Row="1"
+                ItemsSource="{Binding BrowserItems}"
+                ItemTemplate="{StaticResource BrowserSelector}"
+                SelectionMode="None" />
+
+            <!-- Add broker button -->
+            <Button
+                Grid.Row="2"
+                Text="＋  Add Broker"
+                Clicked="OnAddBrokerClicked"
+                BackgroundColor="Transparent"
+                TextColor="{AppThemeBinding Light=#555555, Dark=#6868A0}"
+                FontSize="13"
+                BorderWidth="0"
+                Padding="10,8"
+                HorizontalOptions="Start" />
+        </Grid>
+
+        <!-- Vertical divider -->
+        <BoxView
+            Grid.Column="1"
+            BackgroundColor="{AppThemeBinding Light=#CCCCCC, Dark=#2A2A42}"
+            HorizontalOptions="Fill"
+            VerticalOptions="Fill" />
+
+        <!-- ══════════════════════════════════════════════════════════════ -->
+        <!--  RIGHT PANEL – options & message viewer                        -->
+        <!-- ══════════════════════════════════════════════════════════════ -->
+        <ScrollView Grid.Column="2">
+            <VerticalStackLayout Padding="20,16" Spacing="0">
+
+                <!-- ── Placeholder when no topic is selected ─────────── -->
+                <Label
+                    Text="← Select a topic from the browser"
+                    FontSize="15"
+                    TextColor="#6868A0"
+                    HorizontalOptions="Center"
+                    Margin="0,80,0,0"
+                    IsVisible="{Binding IsTopicSelected, Converter={StaticResource InverseBool}}" />
+
+                <!-- ── Options (shown once a topic is selected) ────────── -->
+                <VerticalStackLayout IsVisible="{Binding IsTopicSelected}" Spacing="14">
+
+                    <!-- Topic heading -->
+                    <Label
+                        Text="{Binding SelectedTopic.Name}"
+                        FontSize="20"
+                        FontAttributes="Bold" />
+
+                    <BoxView HeightRequest="1" BackgroundColor="{AppThemeBinding Light=#DDDDDD, Dark=#2A2A42}" />
+
+                    <!-- ── Deserialize As ──────────────────────────────── -->
+                    <VerticalStackLayout Spacing="6">
+                        <Label Text="Deserialize As" FontAttributes="Bold" FontSize="13" />
+                        <HorizontalStackLayout Spacing="20">
+                            <RadioButton
+                                x:Name="JsonRadioBtn"
+                                Content="JSON (raw)"
+                                GroupName="DeserMode"
+                                IsChecked="True"
+                                CheckedChanged="OnJsonModeChecked" />
+                            <RadioButton
+                                x:Name="ClassRadioBtn"
+                                Content="Class (proto)"
+                                GroupName="DeserMode"
+                                CheckedChanged="OnClassModeChecked" />
+                        </HorizontalStackLayout>
+                    </VerticalStackLayout>
+
+                    <!-- ── NuGet browser (visible only in Class mode) ──── -->
+                    <VerticalStackLayout
+                        IsVisible="{Binding IsClassMode}"
+                        Spacing="10">
+
+                        <BoxView HeightRequest="1" BackgroundColor="{AppThemeBinding Light=#DDDDDD, Dark=#2A2A42}" />
+
+                        <!-- Loading indicator while fetching packages/classes -->
+                        <ActivityIndicator
+                            IsRunning="{Binding IsBusy}"
+                            IsVisible="{Binding IsBusy}"
+                            HorizontalOptions="Start"
+                            HeightRequest="20"
+                            WidthRequest="20" />
+
+                        <!-- 1. Package picker -->
+                        <Label Text="Package" FontAttributes="Bold" FontSize="13" />
+                        <Picker
+                            Title="Select a package…"
+                            ItemsSource="{Binding NugetPackages}"
+                            SelectedItem="{Binding SelectedPackage}"
+                            ItemDisplayBinding="{Binding Id}"
+                            IsEnabled="{Binding IsBusy, Converter={StaticResource InverseBool}}" />
+
+                        <!-- 2. Version picker (visible once a package is selected) -->
+                        <VerticalStackLayout IsVisible="{Binding IsPackageSelected}" Spacing="6">
+                            <Label Text="Version" FontAttributes="Bold" FontSize="13" />
+                            <Picker
+                                Title="Select a version…"
+                                ItemsSource="{Binding NugetVersions}"
+                                SelectedItem="{Binding SelectedVersion}"
+                                IsEnabled="{Binding IsBusy, Converter={StaticResource InverseBool}}" />
+                        </VerticalStackLayout>
+
+                        <!-- 3. Class picker (visible once a version is selected) -->
+                        <VerticalStackLayout IsVisible="{Binding IsVersionSelected}" Spacing="6">
+                            <Label Text="Class" FontAttributes="Bold" FontSize="13" />
+                            <Picker
+                                Title="Select a class…"
+                                ItemsSource="{Binding NugetClasses}"
+                                SelectedItem="{Binding SelectedClass}"
+                                ItemDisplayBinding="{Binding ShortName}"
+                                IsEnabled="{Binding IsBusy, Converter={StaticResource InverseBool}}" />
+
+                            <!-- Selected class chip -->
+                            <HorizontalStackLayout IsVisible="{Binding IsClassSelected}" Spacing="8">
+                                <Label Text="Selected:" FontSize="12" VerticalOptions="Center" />
+                                <Border
+                                    BackgroundColor="#1E5799"
+                                    Padding="8,3"
+                                    StrokeShape="RoundRectangle 4"
+                                    Stroke="Transparent">
+                                    <Label
+                                        Text="{Binding SelectedClass.ShortName}"
+                                        FontSize="12"
+                                        TextColor="White" />
+                                </Border>
+                            </HorizontalStackLayout>
+                        </VerticalStackLayout>
+
+                    </VerticalStackLayout>
+
+                    <!-- ── Message options ──────────────────────────────── -->
+                    <BoxView HeightRequest="1" BackgroundColor="{AppThemeBinding Light=#DDDDDD, Dark=#2A2A42}" />
+                    <Label Text="Message Options" FontAttributes="Bold" FontSize="13" />
+
+                    <!-- Take First -->
+                    <HorizontalStackLayout Spacing="10">
+                        <CheckBox IsChecked="{Binding TakeFirst}" VerticalOptions="Center" />
+                        <Label
+                            Text="Take First  (ignore partition &amp; offset)"
+                            VerticalOptions="Center"
+                            FontSize="14" />
+                    </HorizontalStackLayout>
+
+                    <!-- Partition + Offset (shown when Take First is unchecked) -->
+                    <VerticalStackLayout
+                        IsVisible="{Binding ShowPartitionOffset}"
+                        Spacing="10"
+                        Padding="4,0,0,0">
+
+                        <!-- Partition -->
+                        <Grid ColumnSpacing="10">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="80"  />
+                                <ColumnDefinition Width="110" />
+                                <ColumnDefinition Width="*"   />
+                            </Grid.ColumnDefinitions>
+                            <Label
+                                Grid.Column="0"
+                                Text="Partition:"
+                                VerticalOptions="Center" />
+                            <Entry
+                                Grid.Column="1"
+                                Text="{Binding Partition}"
+                                Placeholder="0"
+                                Keyboard="Numeric" />
+                            <Label
+                                Grid.Column="2"
+                                Text="{Binding PartitionRangeHint}"
+                                FontSize="12"
+                                TextColor="#6868A0"
+                                VerticalOptions="Center" />
+                        </Grid>
+
+                        <!-- Offset -->
+                        <Grid ColumnSpacing="10">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="80"  />
+                                <ColumnDefinition Width="110" />
+                                <ColumnDefinition Width="*"   />
+                            </Grid.ColumnDefinitions>
+                            <Label
+                                Grid.Column="0"
+                                Text="Offset:"
+                                VerticalOptions="Center" />
+                            <Entry
+                                Grid.Column="1"
+                                Text="{Binding Offset}"
+                                Placeholder="0"
+                                Keyboard="Numeric" />
+                            <Label
+                                Grid.Column="2"
+                                Text="{Binding OffsetRangeHint}"
+                                FontSize="12"
+                                TextColor="#6868A0"
+                                VerticalOptions="Center" />
+                        </Grid>
+                    </VerticalStackLayout>
+
+                    <!-- ── View Message button row ──────────────────────── -->
+                    <BoxView HeightRequest="1" BackgroundColor="{AppThemeBinding Light=#DDDDDD, Dark=#2A2A42}" />
+
+                    <HorizontalStackLayout HorizontalOptions="End" Spacing="12">
+                        <ActivityIndicator
+                            IsRunning="{Binding IsLoadingMessage}"
+                            IsVisible="{Binding IsLoadingMessage}"
+                            HeightRequest="24"
+                            WidthRequest="24"
+                            VerticalOptions="Center" />
+                        <Button
+                            Text="View Message"
+                            Command="{Binding ViewMessageCommand}"
+                            BackgroundColor="#1E5799"
+                            TextColor="White"
+                            WidthRequest="140" />
+                    </HorizontalStackLayout>
+
+                    <!-- Status line -->
+                    <Label
+                        Text="{Binding StatusMessage}"
+                        FontSize="13"
+                        IsVisible="{Binding HasStatus}"
+                        TextColor="{Binding IsStatusError, Converter={StaticResource StatusColor}}" />
+
+                    <!-- ── Message output ────────────────────────────────── -->
+                    <VerticalStackLayout IsVisible="{Binding HasMessageOutput}" Spacing="6">
+                        <Label Text="Output" FontAttributes="Bold" FontSize="13" />
+                        <Border
+                            Stroke="#2A2A42"
+                            StrokeThickness="1"
+                            BackgroundColor="#0F0F1A"
+                            Padding="10">
+                            <Editor
+                                Text="{Binding MessageOutput}"
+                                IsReadOnly="True"
+                                MinimumHeightRequest="220"
+                                AutoSize="TextChanges"
+                                BackgroundColor="Transparent"
+                                TextColor="#D4D4D4"
+                                FontFamily="Courier New"
+                                FontSize="13" />
+                        </Border>
+                    </VerticalStackLayout>
+
+                </VerticalStackLayout>
+            </VerticalStackLayout>
+        </ScrollView>
+
+    </Grid>
+</ContentPage>
